@@ -3,6 +3,7 @@ import { Book, formatBook, Catalog} from './task1-types';
 import { addBook, removeBook, getBook} from './task2-functions';
 import { applyFilters, filterByAuthor, filterByMinYear } from './task3-filters';
 import { createBookFromForm } from "./task4-integration";
+import { filterByTitle, sortBooks } from './task5-utils';
 
 // ============================================================
 // ИСХОДНОЕ СОСТОЯНИЕ
@@ -11,10 +12,14 @@ import { createBookFromForm } from "./task4-integration";
 //   const saved = localStorage.getItem('catalog');
 //   if (saved) { ... JSON.parse(saved) ... }
 // Если данные в хранилище есть — используйте их вместо начальных.
-let catalog: Catalog = {
-  '1': { id: '1', title: 'TypeScript Guide', authors: ['John Doe'], year: 2024 },
-  '2': { id: '2', title: 'JavaScript Basics', authors: ['Jane Smith'], year: 2022 },
-};
+const savedCatalog = localStorage.getItem('catalog');
+
+let catalog: Catalog = savedCatalog
+  ? JSON.parse(savedCatalog)
+  : {
+    '1': { id: '1', title: 'TypeScript Guide', authors: ['John Doe'], year: 2024 },
+    '2': { id: '2', title: 'JavaScript Basics', authors: ['Jane Smith'], year: 2022 },
+    };
 
 // ============================================================
 // СОХРАНЕНИЕ В localStorage (Задание 1)
@@ -22,12 +27,14 @@ let catalog: Catalog = {
 // TODO: Создайте функцию saveCatalog(), которая делает:
 //   localStorage.setItem('catalog', JSON.stringify(catalog));
 // Её будем вызывать в двух местах: после addBook и после removeBook.
-
+function saveCatalog() {
+  localStorage.setItem('catalog', JSON.stringify(catalog));
+}
 
 // ============================================================
 // DOM-элементы
 // ============================================================
-const bookList = document.querySelector('#bookList') as HTMLDivElement;
+const bookList = document.querySelector('#bookList');
 const form = document.querySelector('#bookForm') as HTMLFormElement;
 const filterBtn = document.querySelector('#applyFilters') as HTMLButtonElement;
 const authorInput = document.querySelector('#filterAuthor') as HTMLInputElement;
@@ -37,10 +44,12 @@ const errorMessage = document.querySelector('#errorMessage') as HTMLDivElement;
 // TODO (Задание 2): получите новые элементы
 // const searchInput = document.querySelector('#searchInput') as HTMLInputElement;
 // const sortBySelect = document.querySelector('#sortBy') as HTMLSelectElement;
-
+const searchInput = document.querySelector('#searchInput') as HTMLInputElement;
+const sortBySelect = document.querySelector('#sortBy') as HTMLSelectElement;
 
 function renderBooks(books: Book[]) {
-  bookList.innerHTML = ''; 
+  if (!bookList) return;
+  bookList.textContent = '';
 
   if (books.length === 0) {
     bookList.textContent = 'Книги не найдены. Попробуйте изменить фильтры.';
@@ -49,21 +58,12 @@ function renderBooks(books: Book[]) {
 
   books.forEach(book => {
     const card = document.createElement('div');
-    card.className = 'book-card';
+    card.classList.add('book-card', 'fade-in');
     
     const titleEl = document.createElement('h3');
     titleEl.textContent = formatBook(book);
-    
-    const authorsEl = document.createElement('p');
-    authorsEl.textContent = `Авторы: ${book.authors.join(', ')}`;
-    
-    card.append(titleEl, authorsEl);
-    
-    if (book.year !== undefined) {
-      const yearEl = document.createElement('p');
-      yearEl.textContent = `Год: ${book.year}`;
-      card.append(yearEl);
-    }
+    card.append(titleEl);
+
     if (book.rating !== undefined) {
       const ratingEl = document.createElement('p');
       ratingEl.textContent = `Рейтинг: ${book.rating}`;
@@ -82,7 +82,14 @@ function renderBooks(books: Book[]) {
     // ВНИМАНИЕ: в index.html эту кнопку добавлять НЕ НУЖНО.
     // Она создаётся динамически для каждой карточки,
     // чтобы знать, какую именно книгу удалять (замыкание на book.id).
-    
+const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = 'Удалить';
+    deleteBtn.addEventListener('click', () => {
+      catalog = removeBook(catalog, book.id);
+      saveCatalog(); 
+      updateUI();
+    });
+    card.append(deleteBtn);    
     bookList.append(card);
   });
 }
@@ -92,7 +99,7 @@ function renderBooks(books: Book[]) {
 // ============================================================
 // К этому моменту catalog уже должен содержать либо начальные данные,
 // либо данные из localStorage (см. TODO в самом верху файла).
-renderBooks(Object.values(catalog));
+updateUI();
 
 
 // ============================================================
@@ -105,12 +112,13 @@ form.addEventListener('submit', (e) => {
     const formData = new FormData(form);
     const newBook = createBookFromForm(formData);
     catalog = addBook(catalog, newBook);
+    saveCatalog();
     
     // TODO (Задание 1): ВЫЗОВИТЕ saveCatalog() ЗДЕСЬ
     // (после addBook, но до reset и renderBooks)
     
     form.reset();
-    renderBooks(Object.values(catalog));  
+    updateUI(); 
   } catch(error){
     if(error instanceof Error){   
       errorMessage.textContent = error.message; 
@@ -122,18 +130,26 @@ form.addEventListener('submit', (e) => {
 // ============================================================
 // ОБРАБОТЧИК ФИЛЬТРОВ
 // ============================================================
-filterBtn.addEventListener('click', () => {
-  const filters: ((book: Book) => boolean)[] = [];
-  
-  if (authorInput.value.trim()) {
+function updateUI() {
+  const allBooks = Object.values(catalog);
+  const filters = [];
+
+  if (authorInput && authorInput.value.trim()) {
     filters.push(filterByAuthor(authorInput.value.trim()));
   }
-  if (yearInput.value) {
+  if (yearInput && yearInput.value) {
     filters.push(filterByMinYear(parseInt(yearInput.value, 10)));
   }
+  if (searchInput && searchInput.value.trim()) {
+    filters.push(filterByTitle(searchInput.value.trim()));
+  }
 
-  const allBooks = Object.values(catalog);
-  const filteredBooks = applyFilters(allBooks, filters);
-  
-  renderBooks(filteredBooks);
-});
+  const filtered = applyFilters(allBooks, filters);
+  const sortType = (sortBySelect?.value ?? 'year') as 'year' | 'rating';
+  const sorted = sortBooks(filtered, sortType);
+
+  renderBooks(sorted);
+}
+filterBtn.addEventListener('click', updateUI);
+searchInput?.addEventListener('input', updateUI);
+sortBySelect?.addEventListener('change', updateUI);
