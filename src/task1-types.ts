@@ -44,7 +44,7 @@ export function calculateAverageYear(books: Book[]): number {
 
   const sum = booksWithYear.reduce(
     // используем as number так как позже запретим предавать что-то кроме цифр 
-    (acc, book) => acc + (book.year as number),
+    (acc, book) => acc + (book.year ?? 0),
     0
   );
 
